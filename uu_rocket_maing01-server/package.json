@@ -1,0 +1,63 @@
+{
+  "name": "uu_rocket_maing01-server",
+  "version": "0.1.0",
+  "description": "",
+  "license": "License Commercial",
+  "spec": "nodejs-app; uu_appg01_devkit@6.8.0",
+  "dependencies": {
+    "uu_appg01_server": "^6.0.0",
+    "uu_apprepresentationg01": "^3.0.0"
+  },
+  "devDependencies": {
+    "uu_appg01_devkit": "^6.8.0",
+    "uu_appg01_server-test": "^6.0.0",
+    "uu_cloudg02-devkit": "^0.12.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "scripts": {
+    "clean": "uu_appg01_devkit clean",
+    "test": "uu_appg01_devkit test",
+    "build": "uu_appg01_devkit build",
+    "package": "uu_appg01_devkit package",
+    "deploy": "uu_appg01_devkit deploy",
+    "undeploy": "uu_appg01_devkit undeploy",
+    "start": "uu_appg01_devkit start",
+    "prettify": "uu_appg01_devkit prettify",
+    "vulnerabilityScan": "uu_appg01_devkit vulnerabilityScan",
+    "uuAppBox": "uu_appg01_devkit uuAppBox",
+    "uuAppBoxCopy": "uu_appg01_devkit uuAppBoxCopy",
+    "uuCloudDeploy": "uu_appg01_devkit uuCloudDeploy",
+    "uuCloudUndeploy": "uu_appg01_devkit uuCloudUndeploy",
+    "uuCloudShare": "uu_appg01_devkit uuCloudShare",
+    "uuCloudUnshare": "uu_appg01_devkit uuCloudUnshare",
+    "uuCloudDeployList": "uu_appg01_devkit uuCloudDeployList",
+    "uuCloudSwap": "uu_appg01_devkit uuCloudSwap",
+    "uuCloudLogStoreExport": "uu_appg01_devkit uuCloudLogStoreExport",
+    "uuCmdCreate": "uu_appg01_devkit uuCmdCreate",
+    "uuAppDevKitUpgrade": "uu_appg01_devkit uuAppDevKitUpgrade",
+    "createUuCommandLineApiClient": "uu_appg01_devkit createUuCommandLineApiClient",
+    "uu-safe-install": "npx uu-safe-install",
+    "uuCloudg02AppBoxCopy": "uu_cloudg02-devkit appBoxCopy",
+    "uuCloudg02AppBoxExport": "uu_cloudg02-devkit appBoxExport",
+    "uuCloudg02AppBoxImport": "uu_cloudg02-devkit appBoxImport",
+    "uuCloudg02AppBox": "uu_cloudg02-devkit appBox",
+    "uuCloudg02CleanResources": "uu_cloudg02-devkit cleanResources",
+    "uuCloudg02DeployList": "uu_cloudg02-devkit deployList",
+    "uuCloudg02Deploy": "uu_cloudg02-devkit deploy",
+    "uuCloudg02LogExport": "uu_cloudg02-devkit logExport",
+    "uuCloudg02Swap": "uu_cloudg02-devkit swap",
+    "uuCloudg02Undeploy": "uu_cloudg02-devkit undeploy",
+    "uuCloudg02VulnerabilityScan": "uu_cloudg02-devkit vulnerabilityScan"
+  },
+  "main": "app.js",
+  "files": [
+    "app",
+    "env",
+    "public"
+  ],
+  "prettier": {
+    "printWidth": 120
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "uu_rocket_maing01-hi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "",
+  "license": "License Commercial",
+  "namespace": "UuRocket",
+  "spec": "uu5-app; uu_appg01_devkit@6.8.0; uu5devkitg01-plugin@1.7.2",
+  "dependencies": {
+    "uu_plus4u5g02": "^1.38.0",
+    "uu_plus4u5g02-app": "^1.38.0",
+    "uu_plus4u5g02-elements": "^1.38.0",
+    "uu5g05": "^1.40.1",
+    "uu5g05-browser-compatibility": "^1.40.1",
+    "uu5g05-elements": "^1.40.1",
+    "uu5g05-forms": "^1.40.1",
+    "uu5loaderg01": "^1.7.0"
+  },
+  "uuBuildSettings": {
+    "externals": {}
+  },
+  "devDependencies": {
+    "uu_appg01_devkit": "^6.8.0",
+    "uu5devkitg01-plugin": "^1.7.2",
+    "uu_cloudg02-devkit": "^0.15.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "scripts": {
+    "clean": "uu_appg01_devkit clean",
+    "test": "uu_appg01_devkit test",
+    "build": "uu_appg01_devkit build",
+    "package": "uu_appg01_devkit package",
+    "start": "uu_appg01_devkit start",
+    "prettify": "uu_appg01_devkit prettify",
+    "vulnerabilityScan": "uu_appg01_devkit vulnerabilityScan",
+    "uuAppDevKitUpgrade": "uu_appg01_devkit uuAppDevKitUpgrade",
+    "uu5Generate": "uu5devkitg01-plugin generate",
+    "uu5LsiExport": "uu5devkitg01-plugin lsiExport",
+    "uu5LsiImport": "uu5devkitg01-plugin lsiImport",
+    "uu-safe-install": "npx uu-safe-install",
+    "uuCloudg02AppBoxCopy": "uu_cloudg02-devkit appBoxCopy",
+    "uuCloudg02AppBoxExport": "uu_cloudg02-devkit appBoxExport",
+    "uuCloudg02AppBoxImport": "uu_cloudg02-devkit appBoxImport",
+    "uuCloudg02AppBox": "uu_cloudg02-devkit appBox",
+    "uuCloudg02Deploy": "uu_cloudg02-devkit deploy"
+  },
+  "prettier": {
+    "printWidth": 120
+  }
+}

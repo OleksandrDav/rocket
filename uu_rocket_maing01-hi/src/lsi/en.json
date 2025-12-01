@@ -1,0 +1,27 @@
+{
+  "appName": "Application uuRocket",
+  "ControlPanel": {
+    "rightsError": "You do not have sufficient rights to display this component.",
+    "btNotConnected": "The application is not connected to a Business Territory."
+  },
+  "Home": {
+    "welcome": "Welcome",
+    "intro": "<uu5string/>This template consist of prepared client and server side. Shown components demonstrate possibilities and way of using. For application developing purposes they are suitable for modifying, copying and deleting. More about uuApp Structure see documentation&nbsp; <Uu5Elements.Link href=\"https://uuapp.plus4u.net/uu-bookkit-maing01/e884539c8511447a977c7ff070e7f2cf/book/page?code=stepByStepApp\" target=\"_blank\">uuAppDevKit</Uu5Elements.Link>.",
+    "clientSide": "<uu5string/>Libraries <Uu5Elements.Link href=\"https://uuapp.plus4u.net/uu-bookkit-maing01/05ecbf4e8bca405290b1a6d4cee8813a/book\" target=\"_blank\">uu5</Uu5Elements.Link> and <Uu5Elements.Link href=\"https://uuapp.plus4u.net/uu-bookkit-maing01/83c1406c4fc541dba975941424106318/book\" target=\"_blank\">uuPlus4U5</Uu5Elements.Link> are used for developing of client side.",
+    "serverSide": "<uu5string/>It is necessary to initialize application workspace for running server side. See manual <Uu5Elements.Link href=\"https://uuapp.plus4u.net/uu-bookkit-maing01/e884539c8511447a977c7ff070e7f2cf/book/page?code=stepByStepApp\" target=\"_blank\">uuApp Template Developer Guide</Uu5Elements.Link>"
+  },
+  "InitAppWorkspace": {
+    "notAuthorized": "You do not have sufficient rights to use the application.",
+    "notAuthorizedForInit": "The application is running but it was not initialized yet and you do not have sufficient rights to do so.",
+    "formHeader": "Initialize uuApp",
+    "formHeaderInfo": "<uu5string/>Your uuApp is running, but requires initialization. If you need help with filling up this form, see\n<Uu5Elements.Link target=\"_blank\" href=\"#\">Documentation</Uu5Elements.Link>.",
+    "uuBtLocationUriLabel": "uuBusinessTerritory location",
+    "uuBtLocationUriInfo": "Uri of the uuBt location where AWSC will be created",
+    "nameLabel": "Name",
+    "initialize": "Initialize"
+  },
+  "Menu": {
+    "home": "Welcome",
+    "about": "About Application"
+  }
+}

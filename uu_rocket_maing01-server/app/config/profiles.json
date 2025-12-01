@@ -1,0 +1,35 @@
+{
+  "{asid}": {
+    "profileList": ["AsidAuthorities", "AsidExecutives", "AsidLicenseOwner", "Public"],
+    "useCaseMap": {
+    }
+  },
+  "*": {
+    "profileList": ["Authorities", "Executives", "AwidLicenseOwner", "Public", "Authenticated", "AwidInitiator"],
+    "useCaseMap": {
+      "sys/uuAppWorkspace/init": {
+        "sysStateList": ["created", "assigned"],
+        "profileList": ["AwidLicenseOwner", "AwidInitiator"]
+      },
+      "sys/uuAppWorkspace/load": {
+        "sysStateList": ["created", "assigned", "active", "restricted", "readOnly", "closed", "suspended"],
+        "profileList": ["Authenticated"]
+      },
+      "sys/uuAppWorkspace/loadBasicData": {
+        "sysStateList": ["created", "assigned", "active", "restricted", "readOnly", "closed", "suspended"],
+        "profileList": ["Public"]
+      },
+      "defaultUve": {
+        "profileList": ["Public"]
+      },
+      "sys/uuAppWorkspace/initUve": {
+        "sysStateList": ["created", "assigned"],
+        "profileList": ["Public", "AwidLicenseOwner", "AwidInitiator"]
+      },
+      "sys/uuAppWorkspace/apiConsole": {
+        "sysStateList": ["created", "assigned", "active", "restricted", "readOnly", "closed", "suspended"],
+        "profileList": ["Authenticated"]
+      }
+    }
+  }
+}

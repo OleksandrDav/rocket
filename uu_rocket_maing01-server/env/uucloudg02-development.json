@@ -1,0 +1,77 @@
+{
+  "uuAppBoxDescriptor": {
+    "schemaVersion": "2.0",
+    "code": "uu-rocket-maing01",
+    "version": "${projectVersion}",
+    "name": "uuRocketMaing01",
+    "description": "",
+    "productUri": null,
+    "uuAppPackMap": {
+      "uuAppPack01": {
+        "type": "uuNodeImage"
+      }
+    },
+    "deliverySpecType": "uusubappspec:2.0",
+    "deliverySpec": {
+      "urlPath": "uu-rocket-maing01",
+      "uuNodeSetMap": {
+        "nodeSet01": {
+          "uuNodeSetType": "cmdSync",
+          "uuNodeSize": "G2_S",
+          "uuAppPackRef": "uuAppPack01",
+          "uuAppRoutingList": [
+            {
+              "uuGatewayRef": "gwCmdSync01",
+              "uuSubAppSpp": "${urlPath}"
+            }
+          ]
+        }
+      },
+      "uuGatewayMap": {
+        "gwCmdSync01": {
+          "uuGatewayType": "cmdSync",
+          "uuGatewaySize": "XXS"
+        }
+      },
+      "uuAppObjectStoreMap": {
+        "osid01": {
+          "uuAppObjectStoreType": "uuAppObjectStoreg01",
+          "uuAppObjectStoreSize": "G0_25"
+        }
+      },
+      "uuAppServerEnvironment": {
+        "uuSubAppDataStoreMap": {
+          "primary": "${uuAppObjectStoreMap.osid01}"
+        }
+      }
+    }
+  },
+  "uuAppPackRuntimeStackMap": {
+    "uuAppPack01": "docker://uuapp-dev-repo.plus4u.net/runtimestacks/uu_appruntimestackg02-nodejs:1.0"
+  },
+  "uuSubAppDeploymentConfig": {
+    "uuAppResourcePoolOid": "----- VALUE REQUIRED -----",
+    "targetSlot": "production",
+    "asid": "----- VALUE REQUIRED -----",
+    "awidList": [
+      "----- VALUE REQUIRED -----"
+    ]
+  },
+  "uuAppServerEnvironment": {
+    "uu_app_secretstore_enable_encryption": true,
+    "uu_app_secretstore_master_key_active_slot": "slot1",
+    "uu_app_secretstore_master_key1_slot1": "7ltF(L&fsZ^bfmT:(vU8Y:XRZ^.Xsuh(VcY4:]]vJALLecO:Hy;5^(S!fbuOmf%)",
+    "asid_license_owner_list": [
+      "7389-360-836-0000"
+    ],
+    "uu_app_oidc_providers_oidcg02_uri": "https://uuapp-dev.plus4u.net/uu-oidc-maing02/eca71064ecce44b0a25ce940eb8f053d/oidc",
+    "uu5g05_libraryRegistryBaseUri": "https://uuapp-dev.plus4u.net/uu-applibraryregistry-maing01/000008ad5570455e83857a394f9a21c9",
+    "uu5g05_plus4UGoBaseUri": "https://uuapp-dev.plus4u.net/uu-plus4ugo-maing01/00000c3f57074bfcb759aba2d562e013",
+    "uu_plus4u5g02_identityManagementBaseUri": "https://uuapp-dev.plus4u.net/uu-identitymanagement-maing01/58ceb15c275c4b31bfe0fc9768aa6a9c",
+    "uu_plus4u5g02_commonServicesBaseUri": "https://uuapp-dev.plus4u.net/uu-commonservices-maing01/00000b33c474420aa887c972097b8024",
+    "uu_plus4u5g02_peopleBaseUri": "https://uuapp-dev.plus4u.net/uu-plus4upeople-maing01/0000004723544d1ab0b74000d9f7671c",
+    "uu_plus4u5g02_organizationBaseUri": "https://uuapp-dev.plus4u.net/uu-plus4uorganization-maing01/00000e17cfda49f49db73ed53ac8e4cf",
+    "uu_app_objectstore_insert_oid": "all"
+  },
+  "secretListMap": {}
+}
