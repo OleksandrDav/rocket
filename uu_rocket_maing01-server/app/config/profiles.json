@@ -1,8 +1,7 @@
 {
   "{asid}": {
     "profileList": ["AsidAuthorities", "AsidExecutives", "AsidLicenseOwner", "Public"],
-    "useCaseMap": {
-    }
+    "useCaseMap": {}
   },
   "*": {
     "profileList": ["Authorities", "Executives", "AwidLicenseOwner", "Public", "Authenticated", "AwidInitiator"],
@@ -29,6 +28,10 @@
       "sys/uuAppWorkspace/apiConsole": {
         "sysStateList": ["created", "assigned", "active", "restricted", "readOnly", "closed", "suspended"],
         "profileList": ["Authenticated"]
+      },
+      "helloWorld": {
+        "sysStateList": ["active"],
+        "profileList": ["Public"]
       }
     }
   }

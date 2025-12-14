@@ -41,11 +41,9 @@ let Home = createVisualComponent({
 
   render(props) {
     //@@viewOn:private
-    const { identity } = useSession();
     //@@viewOff:private
 
     //@@viewOn:render
-    const attrs = Utils.VisualComponent.getAttrs(props);
     return (
       <div>
         <h1>My message to the World:</h1>
