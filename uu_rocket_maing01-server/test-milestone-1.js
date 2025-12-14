@@ -56,7 +56,7 @@ const fs = require("fs");
           process.exit(1);
         } else {
           console.log("\n🎉 SUCCESS! App Rendered!");
-          console.log(dom.serialize().substring(0, 500) + " ... [truncated]");
+          console.log(dom.serialize());
           clearInterval(interval);
           win.close();
           process.exit(0);
