@@ -3,7 +3,7 @@ class GreetingController {
   helloWorld(ucEnv) {
     const dtoOut = {
       ucEnv: ucEnv.getUri(),
-      session: ucEnv.getSession(), 
+      session: ucEnv.getSession(),
       text: "Hello World!",
       uuAppErrorMap: {},
     };

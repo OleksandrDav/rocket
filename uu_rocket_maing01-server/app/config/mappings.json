@@ -35,6 +35,16 @@
         "realization": "api/controllers/GreetingController.helloWorld",
         "httpMethod": ["GET"],
         "type": "CMD"
+      },
+      "rocket/create": {
+        "realization": "api/controllers/RocketController.create",
+        "httpMethod": "POST",
+        "type": "CMD"
+      },
+      "rocket/list": {
+        "realization": "api/controllers/RocketController.list",
+        "httpMethod": "GET",
+        "type": "CMD"
       }
     }
   }

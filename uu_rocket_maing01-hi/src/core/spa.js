@@ -6,6 +6,7 @@ import Plus4U5App from "uu_plus4u5g02-app";
 
 import Config from "./config/config.js";
 import Home from "../routes/home.js";
+import Contact from "../routes/contact.js";
 
 const InitAppWorkspace = Utils.Component.lazy(() => import("../routes/init-app-workspace.js"));
 const ControlPanel = Utils.Component.lazy(() => import("../routes/control-panel.js"));
@@ -15,6 +16,7 @@ const ControlPanel = Utils.Component.lazy(() => import("../routes/control-panel.
 const ROUTE_MAP = {
   "": { redirect: "home" },
   home: (props) => <Home {...props} />,
+  contact: (props) => <Contact {...props} />,
   "sys/uuAppWorkspace/initUve": (props) => <InitAppWorkspace {...props} />,
   controlPanel: (props) => <ControlPanel {...props} />,
   "*": () => (

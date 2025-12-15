@@ -32,6 +32,14 @@
       "helloWorld": {
         "sysStateList": ["active"],
         "profileList": ["Public"]
+      },
+      "rocket/create": {
+        "sysStateList": ["active"],
+        "profileList": ["Public"]
+      },
+      "rocket/list": {
+        "sysStateList": ["active"],
+        "profileList": ["Public"]
       }
     }
   }

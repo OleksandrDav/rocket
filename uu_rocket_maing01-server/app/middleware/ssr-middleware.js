@@ -27,7 +27,7 @@ class SsrMiddleware {
     // - /oidc/: Auth callbacks
     // - /sys/: System commands
     // - /api/: Data endpoints
-    if (req.url.includes("/oidc/") || req.url.includes("/sys/") || req.url.includes("/api/")) {
+    if (req.url.includes("/oidc/") || req.url.includes("/sys/") || req.url.includes("/api/") || req.url.includes("/rocket/")) {
       return next();
     }
 

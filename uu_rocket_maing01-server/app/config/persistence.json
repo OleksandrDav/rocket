@@ -6,6 +6,10 @@
       "schemaMap": {
         "rocketMain": {
           "realization": "dao/RocketMainMongo"
+        },
+        "rocket": {
+          "realization": "dao/RocketMongo",
+          "maxNoi": 1024
         }
       }
     }
