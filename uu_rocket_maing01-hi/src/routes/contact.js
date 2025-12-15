@@ -1,5 +1,5 @@
 //@@viewOn:imports
-import { createVisualComponent, useState } from "uu5g05";
+import { createVisualComponent } from "uu5g05";
 
 import Config from "./config/config.js";
 //@@viewOff:imports
@@ -20,9 +20,9 @@ const Css = {
 //@@viewOn:helpers
 //@@viewOff:helpers
 
-let Home = createVisualComponent({
+let Contact = createVisualComponent({
   //@@viewOn:statics
-  uu5Tag: Config.TAG + "Home",
+  uu5Tag: Config.TAG + "Contact",
   //@@viewOff:statics
 
   //@@viewOn:propTypes
@@ -35,21 +35,14 @@ let Home = createVisualComponent({
 
   render(props) {
     //@@viewOn:private
-    const [count, setCount] = useState(0);
     //@@viewOff:private
 
     //@@viewOn:render
     return (
       <div>
-        <h1>My message to the World:</h1>
+        <h1>My contacts:</h1>
         <div>
-          <b>Hello </b>
-          <i>World!</i>
-        </div>
-        <div>
-          <button onClick={() => setCount(count + 1)}>increment</button>
-          <button onClick={() => setCount(count - 1)}>decrement</button>
-          <p>Count: {count}</p>
+          <b>+420 774 675 607</b>
         </div>
       </div>
     );
@@ -58,6 +51,6 @@ let Home = createVisualComponent({
 });
 
 //@@viewOn:exports
-export { Home };
-export default Home;
+export { Contact };
+export default Contact;
 //@@viewOff:exports

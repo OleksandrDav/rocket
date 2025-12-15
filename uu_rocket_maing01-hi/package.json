@@ -21,8 +21,8 @@
   },
   "devDependencies": {
     "uu_appg01_devkit": "^6.8.0",
-    "uu5devkitg01-plugin": "^1.7.2",
-    "uu_cloudg02-devkit": "^0.15.3"
+    "uu_cloudg02-devkit": "^0.15.3",
+    "uu5devkitg01-plugin": "^1.7.2"
   },
   "engines": {
     "node": ">=16.0.0"

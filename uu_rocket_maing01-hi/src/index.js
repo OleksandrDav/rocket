@@ -13,7 +13,25 @@ if (!navigator.userAgent.match(/iPhone|iPad|iPod/)) {
 }
 
 function render(targetElementId) {
-  Utils.Dom.render(<Spa />, document.getElementById(targetElementId));
+  const rootElement = document.getElementById(targetElementId);
+
+  // SMART CHECK:
+  // If the server sent us HTML, the rootElement will have children (the app content).
+  // If we are just starting (or fallback), it might only contain the "Loading" spinner or be empty.
+  
+  // Note: We check specifically for meaningful content to avoid hydrating the "Loading" spinner 
+  // if SSR failed but the static file was served.
+  const hasServerContent = rootElement.hasChildNodes() && !rootElement.querySelector("#uuAppLoading");
+
+  if (hasServerContent) {
+    // 1. HYDRATE: Reuse existing HTML (No Flicker)
+    console.log("[Client] Hydrating SSR content...");
+    Utils.Dom.hydrate(<Spa />, rootElement);
+  } else {
+    // 2. RENDER: Build from scratch (Standard)
+    console.log("[Client] Rendering from scratch...");
+    Utils.Dom.render(<Spa />, rootElement);
+  }
 }
 
 export { render };
