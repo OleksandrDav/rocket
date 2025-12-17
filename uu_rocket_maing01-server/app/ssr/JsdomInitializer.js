@@ -1,5 +1,5 @@
 const jsdom = require("jsdom");
-const { JSDOM } = jsdom;
+const { JSDOM, VirtualConsole } = jsdom;
 const fs = require("fs");
 const path = require("path");
 
@@ -34,6 +34,15 @@ class JsdomInitializer {
     const fullPath = path.join(this.frontDistPath, this.frontDistIndexFileName);
     console.log(`[SSR] Initializing JSDOM from: ${fullPath}`);
 
+    const virtualConsole = new VirtualConsole();
+    // Forward logs to terminal so we can see them
+    virtualConsole.on("log", (...args) => console.log("[JSDOM]", ...args));
+    virtualConsole.on("warn", (...args) => console.warn("[JSDOM Warn]", ...args));
+    virtualConsole.on("error", (...args) => console.error("[JSDOM Error]", ...args));
+    // CRITICAL: Swallow "jsdomError" to prevent Node.js process crash
+    virtualConsole.on("jsdomError", (err) => {
+      console.warn(`[JSDOM System Error - Swallowed] ${err.message}`);
+    });
     // =========================================================================
     // STEP 1: JSDOM CONFIGURATION
     // =========================================================================

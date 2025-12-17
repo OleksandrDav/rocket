@@ -1,5 +1,6 @@
 "use strict";
 const path = require("path");
+const fs = require("fs");
 const JsdomInitializer = require("../ssr/JsdomInitializer.js");
 
 // Middleware Order: -101
@@ -34,6 +35,57 @@ class SsrMiddleware {
       req.url.includes("/rocket/")
     ) {
       return next();
+    }
+
+    // =====================================================================
+    // FIX 1: SILENCE SOURCE MAP ERRORS (Stops the 404 delays)
+    // =====================================================================
+    // This catches "surrogate-pairs.js.map" (and any other .map file).
+    // Instead of letting the server return 404, we send an empty JSON object.
+    // This makes JSDOM happy instantly.
+    if (req.url.endsWith(".map")) {
+      res.setHeader("Content-Type", "application/json");
+      res.writeHead(200);
+      res.write("{}");
+      res.end();
+      return; // Stop here, don't go further
+    }
+
+    // =====================================================================
+    // FIX 2: STATIC FILE FLATTENING (Stops CSS/JS 404s)
+    // =====================================================================
+    // This catches requests like ".../public/0.1.0/loading.css"
+    // It strips the version folder and serves ".../public/loading.css" directly.
+    if (req.url.includes("/public/")) {
+      const cleanUrl = req.url.split("?")[0];
+      const parts = cleanUrl.split("/public/");
+
+      // Get the part after public (e.g. "0.1.0/loading.css")
+      const relativePathWithVersion = parts.length > 1 ? parts.pop() : parts[0];
+
+      // Extract just filename: "loading.css"
+      const filename = path.basename(relativePathWithVersion);
+
+      // Look in: C:\...\public\loading.css
+      const filePath = path.join(process.cwd(), "public", filename);
+
+      if (fs.existsSync(filePath)) {
+        const ext = path.extname(filePath).toLowerCase();
+        const mime =
+          {
+            ".js": "application/javascript",
+            ".css": "text/css",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".json": "application/json",
+          }[ext] || "application/octet-stream";
+
+        res.setHeader("Content-Type", mime);
+        // 1 Hour cache to make JSDOM faster on next reload
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        fs.createReadStream(filePath).pipe(res);
+        return;
+      }
     }
 
     // 3. Static File Filter: Skip files with extensions.
@@ -151,8 +203,8 @@ class SsrMiddleware {
           return;
         }
 
-        // Fallback: If 2 seconds passed and we have content but no signal, assume no fetch was needed
-        if (hasContent && Date.now() - start > 2000) {
+        // Fallback: If 7 seconds passed and we have content but no signal, assume no fetch was needed
+        if (hasContent && Date.now() - start > 7000) {
           clearInterval(interval);
           resolve();
           return;
