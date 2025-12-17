@@ -1,7 +1,8 @@
 //@@viewOn:imports
-import { createVisualComponent } from "uu5g05";
+import { createVisualComponent, Utils } from "uu5g05";
 
 import Config from "./config/config.js";
+import RouteBar from "../core/route-bar.js";
 //@@viewOff:imports
 
 //@@viewOn:constants
@@ -39,7 +40,8 @@ let Contact = createVisualComponent({
 
     //@@viewOn:render
     return (
-      <div>
+      <div {...Utils.VisualComponent.getAttrs(props)}>
+        <RouteBar />
         <h1>My contacts:</h1>
         <div>
           <b>+420 774 675 607</b>

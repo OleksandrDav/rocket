@@ -27,7 +27,12 @@ class SsrMiddleware {
     // - /oidc/: Auth callbacks
     // - /sys/: System commands
     // - /api/: Data endpoints
-    if (req.url.includes("/oidc/") || req.url.includes("/sys/") || req.url.includes("/api/") || req.url.includes("/rocket/")) {
+    if (
+      req.url.includes("/oidc/") ||
+      req.url.includes("/sys/") ||
+      req.url.includes("/api/") ||
+      req.url.includes("/rocket/")
+    ) {
       return next();
     }
 
@@ -72,6 +77,19 @@ class SsrMiddleware {
       // We pause here until the app is "Ready".
       await this._waitForAppRender(window);
 
+      // --- NEW: INJECT HYDRATION DATA ---
+      // 1. Check if the app saved any data during render
+      const ssrData = window.__SSR_DATA__;
+
+      // 2. If data exists, inject it into the HTML head/body
+      if (ssrData) {
+        const script = window.document.createElement("script");
+        // Serialize the data to a string
+        script.textContent = `window.__SSR_DATA__ = ${JSON.stringify(ssrData)};`;
+        // Append to body so it executes before React hydrates
+        window.document.body.appendChild(script);
+      }
+
       // 8. Serialize
       // Convert the live DOM (with React content) back into a string string.
       const html = dom.serialize();
@@ -103,40 +121,50 @@ class SsrMiddleware {
   _waitForAppRender(window) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
-      const timeout = 30000; // 30 seconds max wait time
+      const timeout = 10000; // 10 seconds timeout for data fetching
 
       const interval = setInterval(() => {
         const appDiv = window.document.getElementById("uuApp");
         const loadingDiv = window.document.getElementById("uuAppLoading");
 
-        // Check for "Script Error" screen
-        // If the app crashed inside JSDOM, it often renders a specific error div.
+        // 1. Error Screen Check
         if (
           appDiv &&
           appDiv.innerHTML.includes("uu-app-script-error-description") &&
           !appDiv.innerHTML.includes("hidden")
         ) {
           clearInterval(interval);
-          reject(new Error("JSDOM rendered the 'uu-app-script-error' screen. Check logs for Polyfill errors."));
+          reject(new Error("JSDOM rendered the 'uu-app-script-error' screen. Check logs."));
           return;
         }
 
-        // Check for SUCCESS
-        // We are done if:
-        // 1. The #uuApp div has children (React put content there).
-        // 2. The #uuAppLoading spinner is gone (React removed it).
-        if (appDiv && appDiv.children.length > 0 && !loadingDiv) {
+        // 2. SUCCESS CHECK (Updated)
+        // We wait until the App Signal (__SSR_REQ_COMPLETE__) is true.
+        // If the signal is never sent (e.g. no data fetching needed), we fallback to basic content check after 2 seconds.
+        const isDataReady = window.__SSR_REQ_COMPLETE__ === true;
+        const hasContent = appDiv && appDiv.children.length > 0 && !loadingDiv;
+
+        // Strategy: Wait for explicit signal OR fallback if content exists and time passed
+        if (isDataReady) {
           clearInterval(interval);
-          resolve(); // Render complete!
+          resolve();
           return;
         }
 
-        // Check for Timeout
+        // Fallback: If 2 seconds passed and we have content but no signal, assume no fetch was needed
+        if (hasContent && Date.now() - start > 2000) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+
+        // 3. Timeout Check
         if (Date.now() - start > timeout) {
           clearInterval(interval);
-          reject(new Error("Timeout waiting for React to remove #uuAppLoading"));
+          console.warn("[SSR] Timeout waiting for data. Sending what we have.");
+          resolve(); // Resolve anyway to send the Loading state instead of crashing
         }
-      }, 100); // Check every 100ms
+      }, 100);
     });
   }
 }
