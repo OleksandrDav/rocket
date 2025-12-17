@@ -45,6 +45,11 @@
         "realization": "api/controllers/RocketController.list",
         "httpMethod": "GET",
         "type": "CMD"
+      },
+      "rocket/delete": {
+        "realization": "api/controllers/RocketController.delete",
+        "httpMethod": "POST",
+        "type": "CMD"
       }
     }
   }

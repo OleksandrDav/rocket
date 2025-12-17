@@ -40,6 +40,10 @@
       "rocket/list": {
         "sysStateList": ["active"],
         "profileList": ["Public"]
+      },
+      "rocket/delete": {
+        "sysStateList": ["active"],
+        "profileList": ["Public"]
       }
     }
   }

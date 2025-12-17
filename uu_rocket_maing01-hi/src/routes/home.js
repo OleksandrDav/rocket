@@ -1,85 +1,73 @@
-//@@viewOn:imports
-import { Utils, createVisualComponent, useState } from "uu5g05";
+import { Utils, createVisualComponent, useState, useMemo } from "uu5g05";
+import { useSsrFetch } from "../hooks/useSsrFetch.js";
 
 import RouteBar from "../core/route-bar.js";
 import Config from "./config/config.js";
-import { useSsrFetch } from "../hooks/useSsrFetch.js";
-//@@viewOff:imports
+import Header from "../bricks/rocket/header.js";
+import SearchControls from "../bricks/rocket/search-controls.js";
+import RocketGrid from "../bricks/rocket/rocket-grid.js";
 
-//@@viewOn:css
+// Import our new decomposed components
+
 const Css = {
-  // ... (Same CSS as before) ...
-  h1: () => Config.Css.css({ fontSize: 48, lineHeight: "1em", color: "red" }),
-  greeting: () => Config.Css.css({ fontSize: 24, margin: "20px 0", color: "blue" }),
-  list: () => Config.Css.css({ marginTop: 16 }),
-  item: () => Config.Css.css({ padding: "8px 0", borderBottom: "1px solid #eee" }),
-  error: () => Config.Css.css({ marginTop: 12, color: "crimson" }),
+  container: () =>
+    Config.Css.css({
+      maxWidth: 1200,
+      margin: "0 auto",
+      padding: "0px 16px 24px",
+      fontFamily: "Arial, sans-serif",
+      color: "#333",
+    }),
+  errorBox: () =>
+    Config.Css.css({ textAlign: "center", padding: 40, background: "#fff5f5", color: "#c53030", borderRadius: 8 }),
+  loading: () => Config.Css.css({ textAlign: "center", padding: 60, fontSize: 18, color: "#999" }),
 };
-//@@viewOff:css
 
 let Home = createVisualComponent({
   uu5Tag: Config.TAG + "Home",
 
   render(props) {
-    const [count, setCount] = useState(0);
-
-    // ============================================================
-    // THE SENIOR UPGRADE:
-    // One line to handle Fetching, Caching, Hydration, and SSR Signal
-    // ============================================================
+    // 1. DATA: Fetching
     const { data, status, error } = useSsrFetch(
-      "rocketList", // Unique Key for this data
+      "rocketList",
       "http://localhost:8080/uu-rocket-maing01/22222222222222222222222222222222/rocket/list",
     );
 
-    // Extract the specific list from the raw API response
-    const itemList = Array.isArray(data?.itemList) ? data.itemList : [];
+    // 2. STATE: Search
+    const [searchTerm, setSearchTerm] = useState("");
+
+    // 3. LOGIC (Fix: Calculate list inside, depend on 'data')
+    const filteredList = useMemo(() => {
+      // Safe extraction inside
+      const itemList = Array.isArray(data?.itemList) ? data.itemList : [];
+      const term = searchTerm.toLowerCase();
+
+      return itemList.filter(
+        (item) => item.name.toLowerCase().includes(term) || item.text.toLowerCase().includes(term),
+      );
+    }, [data, searchTerm]); // Dependency is now 'data' (stable from hook)
 
     const attrs = Utils.VisualComponent.getAttrs(props);
 
+    // 4. RENDER
     return (
       <div {...attrs}>
         <RouteBar />
 
-        <h1 className={Css.h1()}>My message to the World:</h1>
-        <div className={Css.greeting()}>
-          <b>Hello </b>
-          <i>World!</i>
-        </div>
+        <div className={Css.container()}>
+          <Header />
+          <SearchControls value={searchTerm} onChange={setSearchTerm} />
 
-        <div>
-          <button onClick={() => setCount(count + 1)}>increment</button>
-          <button onClick={() => setCount(count - 1)}>decrement</button>
-          <p>Count: {count}</p>
-        </div>
-
-        <div className={Css.list()}>
-          <h2>Rockets</h2>
-
-          {/* Clean status checking */}
-          {status === "pending" && <div>Loading…</div>}
+          {status === "pending" && <div className={Css.loading()}>🚀 Fueling up engines... (Loading)</div>}
 
           {status === "error" && (
-            <div className={Css.error()}>Failed to load rockets: {error?.message ?? "Unknown error"}</div>
-          )}
-
-          {status === "ready" && (
-            <div>
-              {itemList.length === 0 ? (
-                <div>No rockets found.</div>
-              ) : (
-                itemList.map((item) => (
-                  <div key={item.id ?? item.oid} className={Css.item()}>
-                    <div>
-                      <b>{item.name}</b>
-                    </div>
-                    <div>{item.text}</div>
-                    <div>id: {item.id}</div>
-                  </div>
-                ))
-              )}
+            <div className={Css.errorBox()}>
+              <strong>Mission Abort!</strong> <br />
+              {error?.message ?? "Unknown error occurred."}
             </div>
           )}
+
+          {status === "ready" && <RocketGrid items={filteredList} />}
         </div>
       </div>
     );

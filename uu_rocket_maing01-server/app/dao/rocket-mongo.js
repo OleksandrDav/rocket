@@ -12,6 +12,14 @@ class RocketMongo extends UuObjectDao {
 
     return await super.find(filter, pageInfo);
   }
+
+  async get(awid, id) {
+    return await super.findOne({ awid, id });
+  }
+
+  async delete(awid, id) {
+    return await super.deleteOne({ awid, id });
+  }
 }
 
 module.exports = RocketMongo;

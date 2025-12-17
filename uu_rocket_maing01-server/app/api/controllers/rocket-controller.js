@@ -14,6 +14,10 @@ class RocketController {
   list(ucEnv) {
     return RocketAbl.list(ucEnv.getUri().getAwid(), ucEnv.getDtoIn());
   }
+
+  delete(ucEnv) {
+    return RocketAbl.delete(ucEnv.getUri().getAwid(), ucEnv.getDtoIn());
+  }
 }
 
 module.exports = new RocketController();

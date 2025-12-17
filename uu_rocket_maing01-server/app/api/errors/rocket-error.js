@@ -33,7 +33,29 @@ const List = {
   },
 };
 
+const Delete = {
+  UC_CODE: `${RocketMainUseCaseError.ERROR_PREFIX}rocket/delete/`,
+
+  InvalidDtoIn: class extends RocketMainUseCaseError {
+    constructor() {
+      super(...arguments);
+      this.code = `${Delete.UC_CODE}invalidDtoIn`;
+      this.message = "DtoIn is not valid.";
+    }
+  },
+
+  RocketDoesNotExist: class extends RocketMainUseCaseError {
+    constructor() {
+      super(...arguments);
+      this.code = `${Delete.UC_CODE}rocketDoesNotExist`;
+      this.message = "Rocket with given id does not exist.";
+      this.status = 404;
+    }
+  },
+};
+
 module.exports = {
   Create,
   List,
+  Delete,
 };
