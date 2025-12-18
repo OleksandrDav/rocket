@@ -48,14 +48,32 @@ class JsdomInitializer {
     // =========================================================================
     // We configure JSDOM to behave like a real browser.
     const options = {
-      runScripts: "dangerously", // ALLOWS <script> tags to execute (Essential for React)
-      resources: "usable", // ALLOWS loading external scripts (like libraries from CDN)
-      pretendToBeVisual: true, // Tells React we are in a browser environment (enables requestAnimationFrame)
-      url: "http://localhost:8080/", // Default URL context (overridden by middleware)
+      runScripts: "dangerously",
+      resources: "usable",
+      pretendToBeVisual: true,
+      url: "http://localhost:8080/",
+      virtualConsole, // <--- IMPORTANT: Keep this connected!
       ...this.reconfigureSettings,
+
+      // 🛡️ SAFETY NET (UPDATED): Attach listeners BEFORE scripts run
+      beforeParse(window) {
+        // This runs immediately when the window is created,
+        // before any script tags in index.html are executed.
+
+        window.addEventListener("unhandledrejection", (event) => {
+          // STOP the error from bubbling up to Node.js
+          event.preventDefault();
+          console.warn(`[JSDOM Background Error] Unhandled Rejection: ${event.reason}`);
+        });
+
+        window.addEventListener("error", (event) => {
+          console.warn(`[JSDOM Background Error] Script Error: ${event.message}`);
+        });
+      },
     };
 
-    // Load the file into memory. This "starts" the browser.
+    // Load the file into memory.
+    // Now, if it crashes during load, the listeners above will catch it.
     const dom = await JSDOM.fromFile(fullPath, options);
 
     // =========================================================================

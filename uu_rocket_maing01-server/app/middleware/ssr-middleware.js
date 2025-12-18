@@ -1,10 +1,17 @@
 "use strict";
 const path = require("path");
 const fs = require("fs");
-const JsdomInitializer = require("../ssr/JsdomInitializer.js");
-const routeRegistry = require("../ssr/route-registry.js"); // <--- NEW IMPORT
+const JsdomPool = require("../ssr/JsdomPool.js");
+const routeRegistry = require("../ssr/route-registry.js");
 
-// Middleware Order: -101
+// Initialize Pool configuration (DO NOT call .init() here)
+const ssrPool = new JsdomPool({
+  frontDistPath: path.join(process.cwd(), "public"),
+  indexHtml: "index.html",
+  minInstances: 2,
+  maxUses: 50,
+});
+
 const MIDDLEWARE_ORDER = -101;
 
 class SsrMiddleware {
@@ -13,26 +20,24 @@ class SsrMiddleware {
   }
 
   async pre(req, res, next) {
-    // 1. Basic Checks (Method, Paths, Static Files)
+    if (req.url.endsWith(".map")) {
+      res.statusCode = 404;
+      res.end();
+      return;
+    }
+    // 1. Basic Checks
     if (req.method !== "GET") return next();
-
+    if (req.url.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|json|woff|woff2|ttf|map)$/)) return next();
     if (
       req.url.includes("/oidc/") ||
       req.url.includes("/sys/") ||
       req.url.includes("/api/") ||
       req.url.includes("/rocket/")
-    ) {
+    )
       return next();
-    }
 
-    if (req.url.endsWith(".map")) {
-      res.setHeader("Content-Type", "application/json");
-      res.writeHead(200);
-      res.write("{}");
-      res.end();
-      return;
-    }
-
+    // 2. STATIC FILE FIX (CRITICAL FOR JSDOM)
+    // You must include this block so JSDOM can find local scripts/css
     if (req.url.includes("/public/")) {
       const cleanUrl = req.url.split("?")[0];
       const parts = cleanUrl.split("/public/");
@@ -46,8 +51,6 @@ class SsrMiddleware {
           {
             ".js": "application/javascript",
             ".css": "text/css",
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
             ".json": "application/json",
           }[ext] || "application/octet-stream";
 
@@ -58,118 +61,104 @@ class SsrMiddleware {
       }
     }
 
-    if (req.url.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|json|woff|woff2|ttf|map)$/)) {
-      return next();
-    }
-
-    if (!req.headers.accept || !req.headers.accept.includes("text/html")) {
-      return next();
-    }
-
-    console.log(`[SSR-Middleware] Intercepting HTML request: ${req.url}`);
+    if (!req.headers.accept || !req.headers.accept.includes("text/html")) return next();
 
     try {
-      // 2. URL Normalization
+      // ===================================================================
+      // 🟢 CHANGE 1: LAZY INIT (Fixes the Startup Crash)
+      // ===================================================================
+      // We start the pool here, on the first user request.
+      // This ensures the server is fully running (Port 8080 open) before JSDOM tries to connect.
+      if (!ssrPool.isInitialized) {
+        console.log("[SSR] First request detected. Warming up pool...");
+        await ssrPool.init();
+      }
+      // ===================================================================
+
+      // 3. PRE-FETCH DATA
       const requestPath = req.originalUrl || req.url;
-      const protocol = req.protocol || "http";
-      const host = req.headers.host || "localhost";
-      const fullUrl = `${protocol}://${host}${requestPath}`;
-
-      // =======================================================================
-      // 🟢 MILESTONE 2: SERVER-SIDE DATA PRE-FETCH
-      // =======================================================================
       let preFetchedData = null;
-
-      // Look up the route in our registry
       const loader = routeRegistry[requestPath];
 
       if (loader) {
-        console.log(`[SSR] 📥 Found matching route. Starting Pre-fetch...`);
         try {
-          // EXECUTE THE LOADER (Runs in Node.js)
           preFetchedData = await loader();
-          console.log(`[SSR] ✅ Data Pre-fetch Successful! (${JSON.stringify(preFetchedData).length} bytes)`);
+          console.log(`[SSR] 📥 Pre-fetched data for ${requestPath}`);
         } catch (e) {
-          console.error(`[SSR] ⚠️ Data Pre-fetch Failed: ${e.message}`);
-          // We continue! If server fetch fails, we let the client try later.
+          console.error(`[SSR] ⚠️ Pre-fetch failed: ${e.message}`);
         }
-      } else {
-        console.log(`[SSR] ℹ️ No server loader defined for this route.`);
       }
-      // =======================================================================
 
-      // 3. Initialize JSDOM
-      const publicPath = path.join(process.cwd(), "public");
-      const initializer = new JsdomInitializer(publicPath, "index.html", {
-        url: fullUrl,
-      });
-
-      const dom = await initializer.run();
+      // 4. ACQUIRE INSTANCE
+      const dom = await ssrPool.acquire();
       const window = dom.window;
 
-      // ===================================================================
-      // 🟢 MILESTONE 3: INJECT DATA (The Handover)
-      // ===================================================================
-      if (preFetchedData) {
-        console.log("[SSR] 💉 Injecting pre-fetched data into JSDOM window");
+      // 5. HOT SWAP: Inject Data
+      window.__INITIAL_DATA__ = preFetchedData;
 
-        // 1. Write to the JSDOM window object so React can see it NOW
-        window.__INITIAL_DATA__ = preFetchedData;
-
-        // 2. Write a <script> tag so the REAL BROWSER (Client) can see it later
-        // This ensures that when the user takes over, they don't re-fetch either.
-        const script = window.document.createElement("script");
-        script.textContent = `window.__INITIAL_DATA__ = ${JSON.stringify(preFetchedData)};`;
-        window.document.body.appendChild(script);
+      let dataScript = window.document.getElementById("ssr-data-script");
+      if (!dataScript) {
+        dataScript = window.document.createElement("script");
+        dataScript.id = "ssr-data-script";
+        window.document.body.appendChild(dataScript);
       }
-      // ===================================================================
+      dataScript.textContent = `window.__INITIAL_DATA__ = ${preFetchedData ? JSON.stringify(preFetchedData) : "null"};`;
 
-      // ===================================================================
-      // 🟢 MILESTONE 4 FIX: WAIT FOR FRAMEWORK BOOT
-      // ===================================================================
-      // Even if data is ready, the uu5 framework takes a moment to initialize
-      // and remove the default #uuAppLoading spinner.
+      // 6. HOT SWAP: Teleport Route
+      const routeName = this._extractRouteName(requestPath);
 
-      await new Promise((resolve) => {
-        const start = Date.now();
-        // We assume it should be very fast (< 2 seconds)
-        const timeout = 2000;
+      if (window.__SSR_SET_ROUTE__) {
+        await new Promise((r) => setTimeout(r, 0));
+        window.__SSR_SET_ROUTE__(routeName);
+      }
 
-        const interval = setInterval(() => {
-          const loadingElement = window.document.getElementById("uuAppLoading");
+      // 7. WAIT FOR STABILITY
+      await this._waitForStability(window);
 
-          // 1. SUCCESS: Spinner is gone! The App is visible.
-          if (!loadingElement) {
-            clearInterval(interval);
-            console.log(`[SSR] ✨ Framework booted in ${Date.now() - start}ms`);
-            resolve();
-            return;
-          }
-
-          // 2. TIMEOUT: It's taking too long (maybe auth stuck?)
-          // We resolve anyway to send whatever we have.
-          if (Date.now() - start > timeout) {
-            clearInterval(interval);
-            console.warn("[SSR] ⚠️ Timeout waiting for framework boot (uuAppLoading still present).");
-            resolve();
-          }
-        }, 50); // Check every 50ms
-      });
-      // ===================================================================
-
-      // 5. Serialize
-      // (Injection will happen here in Milestone 3)
+      // 8. SERIALIZE & SEND
       const html = dom.serialize();
 
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.writeHead(200);
       res.write(html);
       res.end();
-      window.close();
+
+      // 9. RELEASE INSTANCE
+      ssrPool.release(dom);
     } catch (error) {
-      console.error(`[SSR-Middleware] Failed to render ${req.url}. Fallback to static.`, error.message);
+      console.error(`[SSR] Error:`, error);
+      // Even if error, try to release the instance if we grabbed one
+      // (Advanced: you might want to track 'dom' variable scope to ensure release)
       return next();
     }
+  }
+
+  _extractRouteName(fullPath) {
+    const parts = fullPath.split("/");
+    const segments = parts.filter((p) => p);
+    const last = segments[segments.length - 1];
+    if (["home", "contact"].includes(last)) return last;
+    return "home";
+  }
+
+  _waitForStability(window) {
+    return new Promise((resolve) => {
+      if (!window.document.getElementById("uuAppLoading")) {
+        setTimeout(resolve, 50);
+        return;
+      }
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if (!window.document.getElementById("uuAppLoading")) {
+          clearInterval(interval);
+          resolve();
+        }
+        if (Date.now() - start > 2000) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 50);
+    });
   }
 }
 
