@@ -34,35 +34,33 @@ class JsdomInitializer {
     const fullPath = path.join(this.frontDistPath, this.frontDistIndexFileName);
     console.log(`[SSR] Initializing JSDOM from: ${fullPath}`);
 
+    // Setup Virtual Console to pipe browser logs to the server terminal
     const virtualConsole = new VirtualConsole();
-    // Forward logs to terminal so we can see them
     virtualConsole.on("log", (...args) => console.log("[JSDOM]", ...args));
     virtualConsole.on("warn", (...args) => console.warn("[JSDOM Warn]", ...args));
     virtualConsole.on("error", (...args) => console.error("[JSDOM Error]", ...args));
-    // CRITICAL: Swallow "jsdomError" to prevent Node.js process crash
+    // CRITICAL: Swallow "jsdomError" to prevent Node.js process crash due to CSS parsing/resource loading issues
     virtualConsole.on("jsdomError", (err) => {
-      console.warn(`[JSDOM System Error - Swallowed] ${err.message}`);
+      // Intentionally swallowed to keep server alive
+      // console.warn(`[JSDOM System Error - Swallowed] ${err.message}`);
     });
+
     // =========================================================================
     // STEP 1: JSDOM CONFIGURATION
     // =========================================================================
-    // We configure JSDOM to behave like a real browser.
     const options = {
-      runScripts: "dangerously",
-      resources: "usable",
-      pretendToBeVisual: true,
-      url: "http://localhost:8080/",
+      runScripts: "dangerously", // ALLOWS <script> tags to execute (Essential for React)
+      resources: "usable", // ALLOWS loading external scripts (like libraries from CDN)
+      pretendToBeVisual: true, // Tells React we are in a browser environment
+      url: "http://localhost:8080/", // Default URL context (overridden by middleware)
       virtualConsole, // <--- IMPORTANT: Keep this connected!
       ...this.reconfigureSettings,
 
-      // 🛡️ SAFETY NET (UPDATED): Attach listeners BEFORE scripts run
+      // 🛡️ SAFETY NET: Attach listeners BEFORE scripts run
+      // This prevents "Unhandled Rejections" inside JSDOM from crashing the Node.js server.
       beforeParse(window) {
-        // This runs immediately when the window is created,
-        // before any script tags in index.html are executed.
-
         window.addEventListener("unhandledrejection", (event) => {
-          // STOP the error from bubbling up to Node.js
-          event.preventDefault();
+          event.preventDefault(); // Stop bubbling
           console.warn(`[JSDOM Background Error] Unhandled Rejection: ${event.reason}`);
         });
 
@@ -72,66 +70,59 @@ class JsdomInitializer {
       },
     };
 
-    // Load the file into memory.
-    // Now, if it crashes during load, the listeners above will catch it.
+    // Load the file into memory. This "starts" the browser.
     const dom = await JSDOM.fromFile(fullPath, options);
 
     // =========================================================================
     // STEP 2: GLOBAL SCOPE & NAVIGATOR FIXES
     // =========================================================================
-    // Node.js does not have 'window' or 'document' globals. Libraries expect them.
-    // We explicitly copy JSDOM's window properties to the Node.js global scope.
 
-    global.window = dom.window;
-    global.document = dom.window.document;
+    // 🔴 POOL SAFETY: We DO NOT pollute global.window or global.document here.
+    // In an instance pool, multiple JSDOMs exist simultaneously.
+    // If we overwrite global.window, Instance A might try to read Instance B's document.
+    //
+    // global.window = dom.window;            <-- REMOVED
+    // global.document = dom.window.document; <-- REMOVED
 
     // FIX: Node v22+ has a read-only 'navigator'. We must overwrite it to use JSDOM's version.
+    // Note: We keep this one global as some libraries check `navigator` before window exists.
     Object.defineProperty(global, "navigator", {
       value: dom.window.navigator,
       writable: true,
       configurable: true,
     });
 
-    // Expose other common browser globals
-    global.history = dom.window.history;
-    global.location = dom.window.location;
-    global.HTMLElement = dom.window.HTMLElement;
-    global.Element = dom.window.Element;
-    global.Node = dom.window.Node;
-    global.NodeFilter = dom.window.NodeFilter;
-    global.DocumentFragment = dom.window.DocumentFragment;
-    global.Event = dom.window.Event;
-    global.CustomEvent = dom.window.CustomEvent;
-
-    // =========================================================================
-    // STEP 3: MISSING BROWSER APIs (The "Polyfills")
-    // =========================================================================
-    // JSDOM is lightweight and misses many modern browser APIs.
-    // We manually define them here to prevent crashes.
-
-    // 1. Auth & Crypto Polyfill
-    // Fixes: "ReferenceError: TextEncoder is not defined" (Common in Auth libraries)
+    // Polyfills usually attached to global can be kept if they are stateless (like TextEncoder).
     const { TextEncoder, TextDecoder } = require("util");
     global.TextEncoder = TextEncoder;
     global.TextDecoder = TextDecoder;
     dom.window.TextEncoder = TextEncoder;
     dom.window.TextDecoder = TextDecoder;
 
-    // Fixes: "AuthenticationError" (UUID generation requires crypto)
+    // =========================================================================
+    // STEP 3: MISSING BROWSER APIs (The "Polyfills")
+    // =========================================================================
+    // We attach these directly to the `dom.window` instance to keep them isolated.
+
+    // 1. Crypto Polyfill (Fixes UUID generation)
     if (!dom.window.crypto) {
       dom.window.crypto = global.crypto || require("crypto").webcrypto;
     }
 
-    // 2. Performance API Polyfill
-    // Fixes: "TypeError: Cannot read property 'responseStart' of undefined"
-    // Used by telemetry libraries to measure load times.
+    // 2. Performance API Polyfill (Fixes telemetry/loading metrics)
     if (!dom.window.performance) {
       dom.window.performance = {};
     }
     dom.window.performance.getEntriesByType = (type) => {
-      // Mock navigation timing data
       if (type === "navigation") {
-        return [{ responseStart: 0, domInteractive: 0, domContentLoadedEventEnd: 0, loadEventEnd: 0 }];
+        return [
+          {
+            responseStart: 0,
+            domInteractive: 0,
+            domContentLoadedEventEnd: 0,
+            loadEventEnd: 0,
+          },
+        ];
       }
       return [];
     };
@@ -139,8 +130,7 @@ class JsdomInitializer {
     dom.window.performance.mark = () => {};
     dom.window.performance.measure = () => {};
 
-    // 3. Observer Polyfills (Layout & Rendering)
-    // Fixes: "ReferenceError: PerformanceObserver is not defined"
+    // 3. Observer Polyfills
     dom.window.PerformanceObserver = class PerformanceObserver {
       constructor(callback) {}
       observe() {}
@@ -149,19 +139,15 @@ class JsdomInitializer {
         return [];
       }
     };
-    global.PerformanceObserver = dom.window.PerformanceObserver;
 
-    // Fixes: Layout libraries checking for resize capability
     dom.window.ResizeObserver = class ResizeObserver {
       constructor(callback) {}
       observe() {}
       unobserve() {}
       disconnect() {}
     };
-    global.ResizeObserver = dom.window.ResizeObserver;
 
-    // 4. matchMedia Polyfill
-    // Fixes: Responsive design logic (e.g. mobile vs desktop views)
+    // 4. matchMedia Polyfill (Responsive design logic)
     dom.window.matchMedia =
       dom.window.matchMedia ||
       function (query) {
@@ -169,17 +155,15 @@ class JsdomInitializer {
           matches: false,
           media: query,
           onchange: null,
-          addListener: () => {}, // Deprecated but needed for legacy support
+          addListener: () => {},
           removeListener: () => {},
-          addEventListener: () => {}, // Modern standard
+          addEventListener: () => {},
           removeEventListener: () => {},
           dispatchEvent: () => false,
         };
       };
 
-    // 5. Canvas API Mock
-    // Fixes: "TypeError: Cannot set properties of null"
-    // Used by icon generation or graphical components. We provide a dummy context.
+    // 5. Canvas API Mock (Fixes graphical components)
     const dummyContext = {
       fillStyle: "",
       strokeStyle: "",
@@ -187,7 +171,9 @@ class JsdomInitializer {
       font: "",
       fillRect: () => {},
       clearRect: () => {},
-      getImageData: (x, y, w, h) => ({ data: new Array(w * h * 4).fill(0) }),
+      getImageData: (x, y, w, h) => ({
+        data: new Array(w * h * 4).fill(0),
+      }),
       putImageData: () => {},
       createLinearGradient: () => ({ addColorStop: () => {} }),
       beginPath: () => {},
@@ -205,10 +191,11 @@ class JsdomInitializer {
       translate: () => {},
       measureText: () => ({ width: 0 }),
     };
-    global.HTMLCanvasElement = dom.window.HTMLCanvasElement;
-    if (global.HTMLCanvasElement) {
-      global.HTMLCanvasElement.prototype.getContext = () => dummyContext;
-      global.HTMLCanvasElement.prototype.toDataURL = () => "";
+
+    // JSDOM implements HTMLCanvasElement, but we need to mock the context
+    if (dom.window.HTMLCanvasElement) {
+      dom.window.HTMLCanvasElement.prototype.getContext = () => dummyContext;
+      dom.window.HTMLCanvasElement.prototype.toDataURL = () => "";
     }
 
     // =========================================================================
@@ -221,46 +208,40 @@ class JsdomInitializer {
     dom.window.Request = global.Request;
     dom.window.Response = global.Response;
 
-    // Prevent OIDC Hangs: JSDOM cannot open popups, so we mock a do-nothing function.
-    dom.window.open = () => ({ close: () => {}, focus: () => {}, postMessage: () => {}, closed: false });
+    // Prevent OIDC Hangs: JSDOM cannot open popups
+    dom.window.open = () => ({
+      close: () => {},
+      focus: () => {},
+      postMessage: () => {},
+      closed: false,
+    });
 
-    // Animation & Scroll Mocks: Required for React rendering loop
-    global.requestAnimationFrame = (callback) => setTimeout(callback, 0);
-    global.cancelAnimationFrame = (id) => clearTimeout(id);
-    global.window.requestAnimationFrame = global.requestAnimationFrame;
-    global.window.cancelAnimationFrame = global.cancelAnimationFrame;
-    global.window.scrollTo = () => {};
+    // Animation & Scroll Mocks
+    dom.window.requestAnimationFrame = (callback) => setTimeout(callback, 0);
+    dom.window.cancelAnimationFrame = (id) => clearTimeout(id);
+    dom.window.scrollTo = () => {};
 
-    global.IntersectionObserver =
-      dom.window.IntersectionObserver ||
-      class IntersectionObserver {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      };
+    dom.window.IntersectionObserver = class IntersectionObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
 
     // -------------------------------------------------------------------------
     // THE LOADER SHIM (Race Condition Fix)
     // -------------------------------------------------------------------------
-    // Problem: JSDOM runs scripts synchronously. The inline script in index.html runs
-    // BEFORE the external `uu5loader.js` file finishes downloading.
-    // Result: `Uu5Loader` is undefined when the app tries to start.
-    //
-    // Solution: We inject a "Mock Loader" immediately. It queues up the app's requests
-    // and polls for the *Real* loader. When the Real loader arrives, it replays the requests.
+    // Captures requests made by the app before the real uu5loader arrives.
     const mockQueue = { initData: null };
     const mockLoader = {
       initUuApp: function (...args) {
-        // Queue the configuration
         mockQueue.initData = args;
       },
       import: function (url) {
-        // Queue the boot request (import)
         return new Promise((resolve, reject) => {
-          // Poll every 50ms for the Real Loader
+          // Poll for Real Loader
           const checker = setInterval(() => {
             const currentLoader = dom.window.Uu5Loader;
-            // If the global loader has changed (is no longer this mock), the real one loaded!
+            // Check if global loader has changed from mock to real
             if (currentLoader && currentLoader !== mockLoader) {
               clearInterval(checker);
               try {
@@ -268,7 +249,7 @@ class JsdomInitializer {
                 if (mockQueue.initData && typeof currentLoader.initUuApp === "function") {
                   currentLoader.initUuApp(...mockQueue.initData);
                 }
-                // 2. Replay the Import Command
+                // 2. Replay Import
                 currentLoader.import(url).then(resolve).catch(reject);
               } catch (err) {
                 reject(err);
@@ -276,7 +257,7 @@ class JsdomInitializer {
             }
           }, 50);
 
-          // Safety Timeout (15s) to prevent infinite hanging
+          // Safety Timeout (15s)
           setTimeout(() => {
             clearInterval(checker);
           }, 15000);
@@ -286,7 +267,7 @@ class JsdomInitializer {
       get: () => null,
     };
 
-    // Inject the mock into the window immediately
+    // Inject the mock immediately
     dom.window.Uu5Loader = mockLoader;
 
     return dom;

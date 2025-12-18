@@ -35,7 +35,7 @@ const RouteBar = createVisualComponent({
     // 1. Get the control function from the hook
     const [, setRoute] = useRoute();
 
-    // 2. CREATE THE BRIDGE (Milestone 2)
+    // 2. CREATE THE BRIDGE 
     // We expose this internal function to the global window object.
     // This allows our Node.js Server (Middleware) to "remote control" the app.
     if (typeof window !== "undefined") {
