@@ -1,26 +1,27 @@
 "use strict";
+
 const path = require("path");
 const fs = require("fs");
 const JsdomPool = require("../ssr/JsdomPool.js");
 const routeRegistry = require("../ssr/route-registry.js");
 
-// Initialize Pool configuration.
-// NOTE: We do NOT call .init() here to avoid race conditions during server startup.
-// We use "Lazy Initialization" inside the middleware instead.
+// Configure the JSDOM instance pool.
+// Initialization is deferred to the first request to ensure the host server
+// is fully operational and the port is bound before environment setup.
 const ssrPool = new JsdomPool({
   frontDistPath: path.join(process.cwd(), "public"),
   indexHtml: "index.html",
-  minInstances: 2, // Keep 2 "Zombie Browsers" ready
-  maxUses: 50, // Recycle browser after 50 uses to prevent memory leaks
+  minInstances: 2,
+  maxUses: 50,
 });
 
 const MIDDLEWARE_ORDER = -101;
 
 /**
- * Class: SsrMiddleware
- * --------------------
- * Intercepts incoming HTML requests and performs Server-Side Rendering (SSR)
- * using a pool of pre-warmed JSDOM instances ("Zombie Browsers").
+ * SsrMiddleware
+ * -------------
+ * Manages the Server-Side Rendering lifecycle by intercepting HTML requests
+ * and utilizing a pre-initialized pool of JSDOM environments.
  */
 class SsrMiddleware {
   constructor() {
@@ -29,25 +30,23 @@ class SsrMiddleware {
 
   async pre(req, res, next) {
     // -------------------------------------------------------------------------
-    // STEP 1: FILTERS & CHECKS
+    // STEP 1: REQUEST FILTERING
     // -------------------------------------------------------------------------
 
-    // Ignore source maps (prevents 404 logs)
+    // Ignore source maps and non-GET requests
     if (req.url.endsWith(".map")) {
       res.statusCode = 404;
       res.end();
       return;
     }
-
-    // Ignore non-GET requests
     if (req.method !== "GET") return next();
 
-    // Ignore static assets (images, fonts, etc.)
+    // Exclude static assets and binary files from SSR processing
     if (req.url.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|json|woff|woff2|ttf|map)$/)) {
       return next();
     }
 
-    // Ignore API, System, and OIDC endpoints
+    // Bypass SSR for API, OIDC, and system-level endpoints
     if (
       req.url.includes("/oidc/") ||
       req.url.includes("/sys/") ||
@@ -58,14 +57,12 @@ class SsrMiddleware {
     }
 
     // -------------------------------------------------------------------------
-    // STEP 2: STATIC FILE FIX (Critical for JSDOM)
+    // STEP 2: INTERNAL RESOURCE RESOLUTION
     // -------------------------------------------------------------------------
-    // JSDOM tries to fetch scripts like `/public/0.1.0/index.js`.
-    // Since the server might not serve these correctly during internal requests,
-    // we intercept them and serve the files directly from the disk.
+    // Resolve static assets requested by JSDOM instances that may not be
+    // accessible via standard routing during the internal rendering cycle.
     if (req.url.includes("/public/")) {
       const cleanUrl = req.url.split("?")[0];
-      // Extract the filename, ignoring version segments (e.g., /0.1.0/)
       const parts = cleanUrl.split("/public/");
       const relativePathWithVersion = parts.length > 1 ? parts.pop() : parts[0];
       const filename = path.basename(relativePathWithVersion);
@@ -87,26 +84,25 @@ class SsrMiddleware {
       }
     }
 
-    // Only handle requests asking for HTML
+    // Verify the request explicitly accepts HTML content
     if (!req.headers.accept || !req.headers.accept.includes("text/html")) {
       return next();
     }
 
     try {
       // -----------------------------------------------------------------------
-      // STEP 3: LAZY INITIALIZATION (Fixes Startup Crash)
+      // STEP 3: DEFERRED POOL INITIALIZATION
       // -----------------------------------------------------------------------
-      // We wait for the first real user request to start the pool.
-      // This guarantees the HTTP server is fully listening on port 8080.
+      // Ensures the application pool is warmed up only after the server is active.
       if (!ssrPool.isInitialized) {
-        console.log("[SSR] First request detected. Warming up pool...");
+        console.log("[SSR] Initial request detected. Initializing resource pool...");
         await ssrPool.init();
       }
 
       // -----------------------------------------------------------------------
-      // STEP 4: PRE-FETCH DATA
+      // STEP 4: SERVER-SIDE DATA PRE-FETCHING
       // -----------------------------------------------------------------------
-      // Look up the URL in our Route Registry to see if we need data.
+      // Execute data loaders defined in the Route Registry for the requested path.
       const requestPath = req.originalUrl || req.url;
       let preFetchedData = null;
       const loader = routeRegistry[requestPath];
@@ -114,27 +110,26 @@ class SsrMiddleware {
       if (loader) {
         try {
           preFetchedData = await loader();
-          console.log(`[SSR] 📥 Pre-fetched data for ${requestPath}`);
+          console.log(`[SSR] Data successfully pre-fetched for ${requestPath}`);
         } catch (e) {
-          console.error(`[SSR] ⚠️ Pre-fetch failed: ${e.message}`);
-          // Continue rendering even if data fails (Client will retry)
+          console.error(`[SSR] Data pre-fetch error: ${e.message}`);
         }
       }
 
       // -----------------------------------------------------------------------
-      // STEP 5: ACQUIRE INSTANCE
+      // STEP 5: RESOURCE ACQUISITION
       // -----------------------------------------------------------------------
-      // Grab a "Zombie Browser" from the pool (Zero Latency)
+      // Retrieve an idle JSDOM environment from the pool.
       const dom = await ssrPool.acquire();
       const window = dom.window;
 
       // -----------------------------------------------------------------------
-      // STEP 6: HOT SWAP - DATA INJECTION
+      // STEP 6: STATE INJECTION & HYDRATION PREPARATION
       // -----------------------------------------------------------------------
-      // 1. Inject into the running instance for React to see immediately
+      // 1. Synchronize the pre-fetched state with the running JSDOM instance.
       window.__INITIAL_DATA__ = preFetchedData;
 
-      // 2. Inject into the HTML for the Client Browser to see later
+      // 2. Append the state to the document for client-side hydration.
       let dataScript = window.document.getElementById("ssr-data-script");
       if (!dataScript) {
         dataScript = window.document.createElement("script");
@@ -144,42 +139,41 @@ class SsrMiddleware {
       dataScript.textContent = `window.__INITIAL_DATA__ = ${preFetchedData ? JSON.stringify(preFetchedData) : "null"};`;
 
       // -----------------------------------------------------------------------
-      // STEP 7: HOT SWAP - TELEPORT ROUTE
+      // STEP 7: ENVIRONMENT ROUTE SYNCHRONIZATION
       // -----------------------------------------------------------------------
-      // Use the Bridge (RouteBar.js) to tell the app to switch pages.
+      // Navigate the existing JSDOM environment to the requested application route.
       const routeName = this._extractRouteName(requestPath);
 
       if (window.__SSR_SET_ROUTE__) {
-        // Tiny timeout ensures the React Event Loop is free to process the update
+        // Yield to the event loop to allow React to process the state transition.
         await new Promise((r) => setTimeout(r, 0));
         window.__SSR_SET_ROUTE__(routeName);
       }
 
       // -----------------------------------------------------------------------
-      // STEP 8: WAIT FOR STABILITY & SERIALIZE
+      // STEP 8: STABILITY MONITORING & SERIALIZATION
       // -----------------------------------------------------------------------
-      // Ensure the "Loading..." spinner is gone before capturing HTML.
+      // Wait for the framework to finish rendering before capturing the HTML string.
       await this._waitForStability(window);
 
       const html = dom.serialize();
 
-      // Send Response
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.writeHead(200);
       res.write(html);
       res.end();
 
-      // Release the instance back to the pool
+      // Return the JSDOM instance to the pool for reuse.
       ssrPool.release(dom);
     } catch (error) {
-      console.error(`[SSR] Error:`, error);
-      // Fallback to standard client-side rendering if SSR explodes
+      console.error(`[SSR] Rendering pipeline failed:`, error);
+      // Fallback to client-side rendering on pipeline failure.
       return next();
     }
   }
 
   /**
-   * Helper: Maps a URL path (e.g., /.../contact) to a Route Name (e.g., "contact")
+   * Maps the request URL path to the corresponding application route name.
    */
   _extractRouteName(fullPath) {
     const parts = fullPath.split("/");
@@ -190,25 +184,24 @@ class SsrMiddleware {
   }
 
   /**
-   * Helper: Waits for the #uuAppLoading spinner to disappear from the DOM.
-   * This confirms the uu5 framework has finished initializing.
+   * Polls the JSDOM document until the framework's loading indicator is removed,
+   * signaling that the UI is stable and ready for serialization.
    */
   _waitForStability(window) {
     return new Promise((resolve) => {
-      // Fast path: already stable
+      // Immediate resolution if the environment is already stable.
       if (!window.document.getElementById("uuAppLoading")) {
-        setTimeout(resolve, 50); // Tiny buffer for React commit phase
+        setTimeout(resolve, 50);
         return;
       }
 
-      // Slow path: poll until ready
       const start = Date.now();
       const interval = setInterval(() => {
         if (!window.document.getElementById("uuAppLoading")) {
           clearInterval(interval);
           resolve();
         }
-        // Timeout after 2 seconds to avoid hanging requests forever
+        // Safety timeout to prevent request hanging.
         if (Date.now() - start > 2000) {
           clearInterval(interval);
           resolve();

@@ -1,5 +1,5 @@
 const path = require("path");
-const JsdomPool = require("./app/ssr/JsdomPool.js");
+const JsdomPool = require("../../app/ssr/JsdomPool.js");
 
 async function runTest() {
   console.log("--- Starting Pool Test ---");

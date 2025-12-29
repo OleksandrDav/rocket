@@ -1,38 +1,35 @@
 import { useState, useEffect, useRef } from "uu5g05";
 
 /**
- * Custom Hook: useSsrFetch
- * ------------------------
- * A "Hybrid" data fetching hook designed for Server-Side Rendering (SSR).
- *
- * It implements the "Fetch-Then-Render" pattern:
- * 1. SERVER (Node.js): The middleware pre-fetches data and injects it into `window.__INITIAL_DATA__`.
- * 2. REACT (JSDOM/Client): This hook reads that injected data immediately upon initialization.
- * 3. RESULT: The component renders with data instantly (Status: 'ready'), avoiding "Loading..." spinners.
- *
- * Fallback:
- * If no injected data is found (e.g., normal client navigation), it behaves like a standard `fetch` hook.
- *
- * @param {string} key - The unique data key (e.g., 'rocketList') to look for in the injected global object.
- * @param {string} url - The API endpoint to fetch from if data is missing.
+ * useSsrFetch
+ * -----------
+ * An isomorphic data-fetching hook that facilitates state hydration
+ * from Server-Side Rendering (SSR) to the client-side environment.
+ * * Execution Pattern:
+ * 1. Synchronous Hydration: On initial mount, the hook attempts to resolve state
+ * from 'window.__INITIAL_DATA__' injected by the SSR middleware.
+ * 2. Asynchronous Fallback: If no server-side state is detected, the hook
+ * executes a standard client-side fetch operation.
+ * * @param {string} key - Unique identifier used to locate pre-fetched state in the global scope.
+ * @param {string} url - Remote endpoint for client-side data resolution.
  */
 export function useSsrFetch(key, url) {
   // ===========================================================================
-  // 1. HYDRATION CHECK (The "Secret Sauce")
+  // 1. STATE RESOLUTION (Hydration)
   // ===========================================================================
-  // Before React even starts, we check if the server left a "gift" for us.
-  const getServerData = () => {
-    // Safety check: Ensure we are in a browser-like environment
+  /**
+   * Attempts to retrieve pre-fetched data from the global window object.
+   * This allows the component to initialize with a populated state,
+   * bypassing the 'pending' status during the initial render.
+   */
+  const resolveInitialData = () => {
     if (typeof window !== "undefined") {
-      // PRIMARY CHECK: New SSR Middleware Injection
-      // The middleware writes to `window.__INITIAL_DATA__` before rendering.
+      // Primary resolution path for the current SSR implementation
       if (window.__INITIAL_DATA__ && window.__INITIAL_DATA__[key]) {
-        // console.log(`[useSsrFetch] 💧 Hydrating '${key}' from Server Data!`);
         return window.__INITIAL_DATA__[key];
       }
 
-      // SECONDARY CHECK: Legacy/Fallback Support
-      // Older SSR implementations might use this key. Kept for safety.
+      // Legacy support for alternate SSR data structures
       if (window.__SSR_DATA__ && window.__SSR_DATA__[key]) {
         return window.__SSR_DATA__[key];
       }
@@ -40,64 +37,58 @@ export function useSsrFetch(key, url) {
     return null;
   };
 
-  // Run the check once during hook initialization (synchronous).
-  const initialData = getServerData();
+  const initialData = resolveInitialData();
 
   // ===========================================================================
   // 2. STATE INITIALIZATION
   // ===========================================================================
-  // If we found data, we start in 'ready' state. The user never sees 'pending'.
+  // Status defaults to 'ready' if initialData is present to prevent layout shift.
   const [data, setData] = useState(initialData);
   const [status, setStatus] = useState(initialData ? "ready" : "pending");
   const [error, setError] = useState(null);
 
-  // Use a Ref to track if we have loaded data.
-  // This persists across re-renders without triggering them.
-  const hasLoaded = useRef(!!initialData);
+  // Persistence ref to track synchronization status across render cycles.
+  const hasResolved = useRef(!!initialData);
 
   // ===========================================================================
-  // 3. THE EFFECT (Client-Side Fetching logic)
+  // 3. EFFECT LIFECYCLE (Client-Side Synchronization)
   // ===========================================================================
   useEffect(() => {
-    // 🛑 OPTIMIZATION: SKIP FETCH IF HYDRATED
-    // If the server provided data, we do absolutely nothing here.
-    if (hasLoaded.current) {
-      // Just signal the middleware that we are "done" (useful for legacy polling logic)
+    // Optimization: Skip network request if state was successfully hydrated from the server.
+    if (hasResolved.current) {
       if (typeof window !== "undefined") window.__SSR_REQ_COMPLETE__ = true;
       return;
     }
 
-    // 🚀 STANDARD FETCH (Fallback)
-    // If we are here, it means we are navigating on the client side (SPA mode),
-    // or the SSR pre-fetch failed. We must fetch the data ourselves.
-    let cancelled = false;
+    let isCancelled = false;
 
+    /**
+     * Executes asynchronous data fetching for client-side navigation or fallback scenarios.
+     */
     const fetchData = async () => {
       try {
         setStatus("pending");
-        console.log(`[useSsrFetch] 📡 Client-side fetching: ${url}`);
 
         const response = await fetch(url, {
           method: "GET",
           headers: { Accept: "application/json" },
         });
 
-        if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+        if (!response.ok) throw new Error(`Fetch operation failed: ${response.status}`);
         const result = await response.json();
 
-        if (!cancelled) {
+        if (!isCancelled) {
           setData(result);
           setStatus("ready");
-          hasLoaded.current = true;
+          hasResolved.current = true;
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!isCancelled) {
           setError(err);
           setStatus("error");
         }
       } finally {
-        // SIGNAL COMPLETE
-        // This global flag tells the server "I am done loading" (if it was waiting).
+        // Signal task completion to the environment (JSDOM/Server context)
         if (typeof window !== "undefined") {
           window.__SSR_REQ_COMPLETE__ = true;
         }
@@ -106,11 +97,10 @@ export function useSsrFetch(key, url) {
 
     fetchData();
 
-    // Cleanup function to prevent setting state on unmounted components
     return () => {
-      cancelled = true;
+      isCancelled = true;
     };
-  }, [key, url]); // Re-run if key or url changes
+  }, [key, url]);
 
   return { data, status, error };
 }

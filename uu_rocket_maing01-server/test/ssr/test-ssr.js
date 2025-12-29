@@ -1,4 +1,4 @@
-const routeRegistry = require("./app/ssr/route-registry.js");
+const routeRegistry = require("../../app/ssr/route-registry.js");
 
 // Check if Node environment supports fetch (Node 18+)
 if (!global.fetch) {

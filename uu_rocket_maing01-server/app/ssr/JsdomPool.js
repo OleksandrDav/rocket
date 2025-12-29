@@ -1,29 +1,28 @@
 "use strict";
+
 const JsdomInitializer = require("./JsdomInitializer.js");
 const { AsyncBlockingQueue } = require("./AsyncBlockingQueue.js");
 
 /**
- * Class: JsdomPool
- * ----------------
- * Manages a pool of "Zombie Browser" instances (JSDOM).
- *
- * Why pooling?
- * - Starting JSDOM takes ~500ms (too slow for every request).
- * - Reusing JSDOM takes ~0ms (instant).
- * - We recycle instances after 'maxUses' to prevent memory leaks in the virtual DOM.
+ * JsdomPool
+ * ---------
+ * Manages a group of pre-loaded JSDOM instances to speed up SSR.
+ * * Performance Note:
+ * Creating a new JSDOM instance takes ~2000ms. By keeping a pool of already
+ * started instances, we can provide a browser environment in ~0ms.
  */
 class JsdomPool {
   /**
    * @param {object} config
-   * @param {string} config.frontDistPath - Absolute path to the /public folder
-   * @param {string} config.indexHtml - The entry file name (e.g., 'index.html')
-   * @param {number} config.minInstances - Number of browsers to keep warm (default: 2)
-   * @param {number} config.maxUses - Recycle browser after this many requests (default: 50)
+   * @param {string} config.frontDistPath - Path to the public folder.
+   * @param {string} config.indexHtml - The HTML file to load (index.html).
+   * @param {number} config.minInstances - How many instances to keep ready.
+   * @param {number} config.maxUses - How many times an instance is used before being replaced.
    */
   constructor({ frontDistPath, indexHtml, minInstances = 2, maxUses = 50 }) {
     this.config = { frontDistPath, indexHtml, minInstances, maxUses };
-    this.pool = []; // Keeps track of all active JSDOM objects
-    this.queue = new AsyncBlockingQueue(); // FIFO Queue for handling incoming requests
+    this.pool = []; // List of all active instances
+    this.queue = new AsyncBlockingQueue(); // Manages the order of requests
     this.isInitialized = false;
   }
 
@@ -35,22 +34,20 @@ class JsdomPool {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
-    console.log(`[JsdomPool] Warming up ${this.config.minInstances} instances...`);
+    console.log(`[JsdomPool] Starting ${this.config.minInstances} initial instances...`);
     const promises = [];
     for (let i = 0; i < this.config.minInstances; i++) {
       promises.push(this._createNewInstance());
     }
-    // Wait for all browsers to boot up before accepting traffic
     await Promise.all(promises);
-    console.log(`[JsdomPool] Pool ready.`);
+    console.log(`[JsdomPool] Pool is ready.`);
   }
 
   /**
-   * INTERNAL: Creates a fresh JSDOM instance and adds it to the available queue.
+   * INTERNAL: Creates a fresh JSDOM instance and adds it to the queue.
+   * We use a dummy URL to ensure the instance has a consistent origin for network calls.
    */
   async _createNewInstance() {
-    // We initialize to a valid internal URL.
-    // Important: The domain/port must match the server to avoid CORS issues during fetch.
     const dummyUrl = "http://localhost:8080/uu-rocket-maing01/22222222222222222222222222222222/home";
 
     const initializer = new JsdomInitializer(this.config.frontDistPath, this.config.indexHtml, {
@@ -60,25 +57,24 @@ class JsdomPool {
     try {
       const dom = await initializer.run();
 
-      // Tag the instance with metadata for lifecycle management
+      // Attach metadata to track the age and usage of the instance
       dom._poolMeta = {
         usageCount: 0,
-        id: Math.random().toString(36).substring(7), // Random ID for debugging
+        id: Math.random().toString(36).substring(7),
         createdAt: Date.now(),
       };
 
-      this.pool.push(dom); // Add to tracking list
-      this.queue.enqueue(dom); // Add to "Ready for Work" line
-      // console.log(`[JsdomPool] Instance ${dom._poolMeta.id} created.`);
+      this.pool.push(dom);
+      this.queue.enqueue(dom);
       return dom;
     } catch (e) {
-      console.error("[JsdomPool] Failed to create instance", e);
+      console.error("[JsdomPool] Failed to create JSDOM instance:", e);
     }
   }
 
   /**
-   * Acquire a running browser instance.
-   * If all browsers are busy, this returns a Promise that waits until one is free.
+   * Takes an available instance from the pool.
+   * If all instances are busy, it waits until one is released.
    * @returns {Promise<JSDOM>}
    */
   async acquire() {
@@ -88,38 +84,37 @@ class JsdomPool {
   }
 
   /**
-   * Releases a browser instance back to the pool after use.
-   * Checks if the instance is "tired" (maxUses reached) and recycles it if needed.
-   * @param {JSDOM} dom - The instance to release
+   * Returns an instance back to the pool after the request is finished.
+   * If the instance has reached 'maxUses', it is closed and a new one is created.
+   * @param {JSDOM} dom - The instance to return.
    */
   async release(dom) {
     if (!dom) return;
 
-    // 1. Check for Expiry (Memory Leak Protection)
+    // Check if the instance should be replaced to prevent memory leaks
     if (dom._poolMeta.usageCount >= this.config.maxUses) {
-      console.log(`[JsdomPool] Instance ${dom._poolMeta.id} expired (${dom._poolMeta.usageCount} uses). Recycling...`);
+      console.log(`[JsdomPool] Instance ${dom._poolMeta.id} reached usage limit. Replacing...`);
 
-      // Remove from tracking array
+      // Remove from the list of active instances
       const index = this.pool.indexOf(dom);
       if (index > -1) this.pool.splice(index, 1);
 
-      // Close window to free system memory
+      // Close the window to free up memory
       try {
         dom.window.close();
       } catch (e) {
-        console.warn("[JsdomPool] Warning: Failed to close JSDOM window", e);
+        console.warn("[JsdomPool] Error closing window during replacement:", e);
       }
 
-      // Create a fresh replacement immediately
+      // Create a new fresh instance to take its place
       this._createNewInstance();
     } else {
-      // 2. Clean up for next user
-      // Reset the global data injection variable so the next request starts clean
+      // Cleanup: Remove injected data so the next request starts clean
       if (dom.window.__INITIAL_DATA__) {
         delete dom.window.__INITIAL_DATA__;
       }
 
-      // Return the instance to the back of the line
+      // Make the instance available for the next request
       this.queue.enqueue(dom);
     }
   }

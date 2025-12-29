@@ -4,21 +4,21 @@ const fs = require("fs");
 const path = require("path");
 
 /**
- * Class: JsdomInitializer
- * -----------------------
- * Responsible for booting up a virtual browser environment (JSDOM) inside Node.js.
- * This is the "Engine" of Server-Side Rendering.
+ * JsdomInitializer
+ * ----------------
+ * Orchestrates the creation of a virtual browser environment (JSDOM) within Node.js.
+ * This class acts as the execution engine for Server-Side Rendering (SSR).
  *
- * It performs three critical tasks:
- * 1. Loads the `index.html` file into memory.
- * 2. Polyfills missing browser APIs (Canvas, TextEncoder, Performance) that Node.js lacks.
- * 3. Shims the `Uu5Loader` to catch the application boot sequence before scripts execute.
+ * Core Responsibilities:
+ * 1. Document Initialization: Loads and parses the entry 'index.html'.
+ * 2. API Polyfilling: Implements browser-native APIs (Canvas, Crypto, Performance) missing in Node.js.
+ * 3. Lifecycle Management: Shims the Uu5Loader to synchronize the application boot sequence.
  */
 class JsdomInitializer {
   /**
-   * @param {string} frontDistPath - Absolute path to the public folder containing assets.
-   * @param {string} frontDistIndexFileName - The entry file (usually 'index.html').
-   * @param {object} reconfigureSettings - Custom overrides for JSDOM options (e.g., URL).
+   * @param {string} frontDistPath - Absolute path to the directory containing build assets.
+   * @param {string} frontDistIndexFileName - Name of the entry HTML file.
+   * @param {object} reconfigureSettings - JSDOM configuration overrides.
    */
   constructor(frontDistPath, frontDistIndexFileName = "index.html", reconfigureSettings = {}) {
     this.frontDistPath = frontDistPath;
@@ -27,40 +27,37 @@ class JsdomInitializer {
   }
 
   /**
-   * Main execution method.
-   * @returns {Promise<JSDOM>} The initialized JSDOM instance with the running app.
+   * Initializes and executes the virtual environment.
+   * @returns {Promise<JSDOM>} The configured JSDOM instance.
    */
   async run() {
     const fullPath = path.join(this.frontDistPath, this.frontDistIndexFileName);
-    console.log(`[SSR] Initializing JSDOM from: ${fullPath}`);
+    console.log(`[SSR] Initializing JSDOM environment from: ${fullPath}`);
 
-    // Setup Virtual Console to pipe browser logs to the server terminal
     const virtualConsole = new VirtualConsole();
     virtualConsole.on("log", (...args) => console.log("[JSDOM]", ...args));
     virtualConsole.on("warn", (...args) => console.warn("[JSDOM Warn]", ...args));
     virtualConsole.on("error", (...args) => console.error("[JSDOM Error]", ...args));
-    // CRITICAL: Swallow "jsdomError" to prevent Node.js process crash due to CSS parsing/resource loading issues
+
+    // Suppress JSDOM internal errors (e.g., CSS parsing) to maintain server stability
     virtualConsole.on("jsdomError", (err) => {
-      // Intentionally swallowed to keep server alive
-      // console.warn(`[JSDOM System Error - Swallowed] ${err.message}`);
+      /* Intentionally ignored to prevent Node.js process interruption */
     });
 
-    // =========================================================================
-    // STEP 1: JSDOM CONFIGURATION
-    // =========================================================================
     const options = {
-      runScripts: "dangerously", // ALLOWS <script> tags to execute (Essential for React)
-      resources: "usable", // ALLOWS loading external scripts (like libraries from CDN)
-      pretendToBeVisual: true, // Tells React we are in a browser environment
-      url: "http://localhost:8080/", // Default URL context (overridden by middleware)
-      virtualConsole, // <--- IMPORTANT: Keep this connected!
+      runScripts: "dangerously", // Required for executing application logic (React/uu5)
+      resources: "usable", // Enables loading of external scripts and resources
+      pretendToBeVisual: true, // Emulates a visual environment for layout calculations
+      url: "http://localhost:8080/",
+      virtualConsole,
       ...this.reconfigureSettings,
 
-      // 🛡️ SAFETY NET: Attach listeners BEFORE scripts run
-      // This prevents "Unhandled Rejections" inside JSDOM from crashing the Node.js server.
+      /**
+       * Configures error listeners before the DOM is parsed or scripts are executed.
+       */
       beforeParse(window) {
         window.addEventListener("unhandledrejection", (event) => {
-          event.preventDefault(); // Stop bubbling
+          event.preventDefault();
           console.warn(`[JSDOM Background Error] Unhandled Rejection: ${event.reason}`);
         });
 
@@ -70,29 +67,25 @@ class JsdomInitializer {
       },
     };
 
-    // Load the file into memory. This "starts" the browser.
     const dom = await JSDOM.fromFile(fullPath, options);
 
     // =========================================================================
-    // STEP 2: GLOBAL SCOPE & NAVIGATOR FIXES
+    // GLOBAL ENVIRONMENT CONFIGURATION
     // =========================================================================
 
-    // 🔴 POOL SAFETY: We DO NOT pollute global.window or global.document here.
-    // In an instance pool, multiple JSDOMs exist simultaneously.
-    // If we overwrite global.window, Instance A might try to read Instance B's document.
-    //
-    // global.window = dom.window;            <-- REMOVED
-    // global.document = dom.window.document; <-- REMOVED
-
-    // FIX: Node v22+ has a read-only 'navigator'. We must overwrite it to use JSDOM's version.
-    // Note: We keep this one global as some libraries check `navigator` before window exists.
+    /**
+     * Define 'navigator' globally to satisfy library requirements before
+     * window initialization. Note: Instance-specific globals (window/document)
+     * are kept isolated within the JSDOM instance to prevent cross-contamination
+     * during concurrent request handling.
+     */
     Object.defineProperty(global, "navigator", {
       value: dom.window.navigator,
       writable: true,
       configurable: true,
     });
 
-    // Polyfills usually attached to global can be kept if they are stateless (like TextEncoder).
+    // Provide standard Text encoding polyfills for authentication and data handling
     const { TextEncoder, TextDecoder } = require("util");
     global.TextEncoder = TextEncoder;
     global.TextDecoder = TextDecoder;
@@ -100,29 +93,21 @@ class JsdomInitializer {
     dom.window.TextDecoder = TextDecoder;
 
     // =========================================================================
-    // STEP 3: MISSING BROWSER APIs (The "Polyfills")
+    // BROWSER API POLYFILLS
     // =========================================================================
-    // We attach these directly to the `dom.window` instance to keep them isolated.
 
-    // 1. Crypto Polyfill (Fixes UUID generation)
+    // Web Crypto API: Required for UUID generation and security operations
     if (!dom.window.crypto) {
       dom.window.crypto = global.crypto || require("crypto").webcrypto;
     }
 
-    // 2. Performance API Polyfill (Fixes telemetry/loading metrics)
+    // Performance API: Provides timing and navigation metrics
     if (!dom.window.performance) {
       dom.window.performance = {};
     }
     dom.window.performance.getEntriesByType = (type) => {
       if (type === "navigation") {
-        return [
-          {
-            responseStart: 0,
-            domInteractive: 0,
-            domContentLoadedEventEnd: 0,
-            loadEventEnd: 0,
-          },
-        ];
+        return [{ responseStart: 0, domInteractive: 0, domContentLoadedEventEnd: 0, loadEventEnd: 0 }];
       }
       return [];
     };
@@ -130,9 +115,9 @@ class JsdomInitializer {
     dom.window.performance.mark = () => {};
     dom.window.performance.measure = () => {};
 
-    // 3. Observer Polyfills
+    // Observer APIs: Support for modern layout and performance tracking
     dom.window.PerformanceObserver = class PerformanceObserver {
-      constructor(callback) {}
+      constructor() {}
       observe() {}
       disconnect() {}
       takeRecords() {
@@ -141,13 +126,13 @@ class JsdomInitializer {
     };
 
     dom.window.ResizeObserver = class ResizeObserver {
-      constructor(callback) {}
+      constructor() {}
       observe() {}
       unobserve() {}
       disconnect() {}
     };
 
-    // 4. matchMedia Polyfill (Responsive design logic)
+    // matchMedia: Supports responsive logic and component queries
     dom.window.matchMedia =
       dom.window.matchMedia ||
       function (query) {
@@ -163,7 +148,7 @@ class JsdomInitializer {
         };
       };
 
-    // 5. Canvas API Mock (Fixes graphical components)
+    // Canvas API: Provides a mock context to prevent failures in graphical components
     const dummyContext = {
       fillStyle: "",
       strokeStyle: "",
@@ -171,9 +156,7 @@ class JsdomInitializer {
       font: "",
       fillRect: () => {},
       clearRect: () => {},
-      getImageData: (x, y, w, h) => ({
-        data: new Array(w * h * 4).fill(0),
-      }),
+      getImageData: (x, y, w, h) => ({ data: new Array(w * h * 4).fill(0) }),
       putImageData: () => {},
       createLinearGradient: () => ({ addColorStop: () => {} }),
       beginPath: () => {},
@@ -192,31 +175,25 @@ class JsdomInitializer {
       measureText: () => ({ width: 0 }),
     };
 
-    // JSDOM implements HTMLCanvasElement, but we need to mock the context
     if (dom.window.HTMLCanvasElement) {
       dom.window.HTMLCanvasElement.prototype.getContext = () => dummyContext;
       dom.window.HTMLCanvasElement.prototype.toDataURL = () => "";
     }
 
     // =========================================================================
-    // STEP 4: STANDARD MOCKS & LOADER SHIM
+    // NETWORK & ASYNC MOCKS
     // =========================================================================
 
-    // Fetch API: Allow JSDOM to make network requests using Node's native fetch
+    // Bind Node.js native Fetch API to the JSDOM window
     dom.window.fetch = global.fetch;
     dom.window.Headers = global.Headers;
     dom.window.Request = global.Request;
     dom.window.Response = global.Response;
 
-    // Prevent OIDC Hangs: JSDOM cannot open popups
-    dom.window.open = () => ({
-      close: () => {},
-      focus: () => {},
-      postMessage: () => {},
-      closed: false,
-    });
+    // Prevent OIDC/Auth loops from attempting to open external windows
+    dom.window.open = () => ({ close: () => {}, focus: () => {}, postMessage: () => {}, closed: false });
 
-    // Animation & Scroll Mocks
+    // Animation frames: Required for React rendering cycles
     dom.window.requestAnimationFrame = (callback) => setTimeout(callback, 0);
     dom.window.cancelAnimationFrame = (id) => clearTimeout(id);
     dom.window.scrollTo = () => {};
@@ -227,29 +204,29 @@ class JsdomInitializer {
       disconnect() {}
     };
 
-    // -------------------------------------------------------------------------
-    // THE LOADER SHIM (Race Condition Fix)
-    // -------------------------------------------------------------------------
-    // Captures requests made by the app before the real uu5loader arrives.
+    // =========================================================================
+    // UU5 LOADER SHIM
+    // =========================================================================
+
+    /**
+     * Resolves race conditions between JSDOM script execution and external script loading.
+     * Queues initialization calls and replays them once the real Uu5Loader is available.
+     */
     const mockQueue = { initData: null };
     const mockLoader = {
-      initUuApp: function (...args) {
+      initUuApp: (...args) => {
         mockQueue.initData = args;
       },
-      import: function (url) {
+      import: (url) => {
         return new Promise((resolve, reject) => {
-          // Poll for Real Loader
           const checker = setInterval(() => {
             const currentLoader = dom.window.Uu5Loader;
-            // Check if global loader has changed from mock to real
             if (currentLoader && currentLoader !== mockLoader) {
               clearInterval(checker);
               try {
-                // 1. Replay Configuration
                 if (mockQueue.initData && typeof currentLoader.initUuApp === "function") {
                   currentLoader.initUuApp(...mockQueue.initData);
                 }
-                // 2. Replay Import
                 currentLoader.import(url).then(resolve).catch(reject);
               } catch (err) {
                 reject(err);
@@ -257,17 +234,13 @@ class JsdomInitializer {
             }
           }, 50);
 
-          // Safety Timeout (15s)
-          setTimeout(() => {
-            clearInterval(checker);
-          }, 15000);
+          setTimeout(() => clearInterval(checker), 15000);
         });
       },
       refreshCache: () => Promise.resolve(),
       get: () => null,
     };
 
-    // Inject the mock immediately
     dom.window.Uu5Loader = mockLoader;
 
     return dom;

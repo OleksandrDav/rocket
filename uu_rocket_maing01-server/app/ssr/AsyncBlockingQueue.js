@@ -1,64 +1,50 @@
 "use strict";
 
 /**
- * Class: AsyncBlockingQueue
- * -------------------------
- * A First-In-First-Out (FIFO) queue designed for async/await workflows.
- *
- * Use Case in SSR:
- * Imagine you have 2 "Zombie Browsers" but 100 users hitting your site at once.
- * You cannot crash. You need a line.
- *
- * - If a browser is free, you get it instantly.
- * - If all browsers are busy, you receive a Promise that "blocks" (waits)
- * until a browser is returned to the pool.
+ * AsyncBlockingQueue
+ * ------------------
+ * A First-In-First-Out (FIFO) queue designed for asynchronous workflows.
+ * * Purpose in SSR:
+ * Manages access to a limited number of JSDOM instances. If all instances
+ * are currently in use, the queue provides a Promise that resolves as soon
+ * as an instance is returned to the pool.
  */
 class AsyncBlockingQueue {
   constructor() {
-    // Stores the actual resources (JSDOM instances) currently sitting idle.
+    // Array of available resources (e.g., idle JSDOM instances)
     this.items = [];
 
-    // Stores the "Resolve" functions of users who are waiting in line.
+    // Array of resolve functions for pending requests waiting for a resource
     this.waiters = [];
   }
 
   /**
-   * Adds an item (JSDOM instance) back into the available pool.
-   *
-   * Mechanism:
-   * 1. Check if anyone is waiting in line (`this.waiters`).
-   * 2. If yes: Hand the item directly to the first person in line (resolve their promise).
-   * 3. If no: Store the item in `this.items` for the next person who asks.
-   *
-   * @param {any} item - The resource to release back to the queue.
+   * Adds an item back into the queue or satisfies a waiting request.
+   * If there are pending requests, the item is immediately passed to the oldest one.
+   * @param {any} item - The resource to be added back to the pool.
    */
   enqueue(item) {
     if (this.waiters.length > 0) {
-      // ⚡ FAST PATH: Give directly to a waiter
+      // Pass the item directly to the first waiting request
       const resolve = this.waiters.shift();
       resolve(item);
     } else {
-      // 💤 SLOW PATH: Store for later
+      // Store the item for the next incoming request
       this.items.push(item);
     }
   }
 
   /**
    * Retrieves an item from the queue.
-   *
-   * Mechanism:
-   * 1. If an item is available, return it immediately (wrapped in a resolved Promise).
-   * 2. If empty, return a "Pending Promise" and add its `resolve` function to `this.waiters`.
-   * This effectively "pauses" the calling code until `enqueue` is called.
-   *
-   * @returns {Promise<any>} A promise that resolves to the item.
+   * If the queue is empty, it returns a Promise that settles once an item is enqueued.
+   * @returns {Promise<any>} A promise resolving to the available resource.
    */
   dequeue() {
     if (this.items.length > 0) {
-      // ✅ AVAILABLE: Return immediately
+      // Return the next available item immediately
       return Promise.resolve(this.items.shift());
     } else {
-      // ⏳ BUSY: Wait in line
+      // No items available; register the request and return a pending Promise
       return new Promise((resolve) => {
         this.waiters.push(resolve);
       });
@@ -66,8 +52,8 @@ class AsyncBlockingQueue {
   }
 
   /**
-   * Returns the number of currently available items.
-   * Does not count items currently in use.
+   * Returns the count of idle items currently in the queue.
+   * @returns {number}
    */
   get length() {
     return this.items.length;

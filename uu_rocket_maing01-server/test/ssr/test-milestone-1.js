@@ -1,4 +1,4 @@
-const JsdomInitializer = require("./app/ssr/JsdomInitializer");
+const JsdomInitializer = require("../../app/ssr/JsdomInitializer");
 const path = require("path");
 const fs = require("fs");
 
