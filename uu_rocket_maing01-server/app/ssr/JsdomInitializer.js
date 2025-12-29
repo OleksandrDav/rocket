@@ -1,6 +1,5 @@
 const jsdom = require("jsdom");
 const { JSDOM, VirtualConsole } = jsdom;
-const fs = require("fs");
 const path = require("path");
 
 /**
